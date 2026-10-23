@@ -18,7 +18,7 @@
 <header class="top">
   <div class="brand"><div class="logo"><div class="pin">➤</div><div>GPS <span style="color:var(--accent)">3D</span><div style="font-size:10px;color:var(--muted);font-weight:500">NAVEGAÇÃO INTELIGENTE</div></div></div><div class="status" id="status">● MAPA ONLINE</div></div>
   <form class="searchrow" id="searchForm"><input id="destination" autocomplete="street-address" placeholder="Para onde você quer ir?" aria-label="Destino"><button class="searchbtn" type="submit">Buscar</button></form>
-  <div class="sub">Pesquise um lugar ou endereço e abra a rota no navegador.</div>
+  <div class="sub">Mapa por satélite • Pesquise endereços, bairros, cidades e pontos de interesse.</div>
 </header>
 <main class="map-wrap">
   <div id="map" aria-label="Mapa interativo"></div>
@@ -35,59 +35,76 @@
 <script>
 (function(){
 const $=id=>document.getElementById(id);
-const state={position:null,destination:null,destinationName:"",marker:null,routeLine:null,tilted:true,traffic:false};
+const state={position:null,destination:null,destinationName:"",marker:null,positionMarker:null,tilted:true,traffic:false,searchMarkers:[]};
 const start=[-48.4902,-1.4558]; // Belém, Pará: ponto inicial ilustrativo até obter GPS
 function toast(msg){const el=$('toast');el.textContent=msg;el.classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.classList.remove('show'),3500)}
 function setInfo(title,text){$('infoTitle').textContent=title;$('infoText').textContent=text}
 const map=new maplibregl.Map({
  container:'map',
- style:{version:8,sources:{osm:{type:'raster',tiles:['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],tileSize:256,attribution:'© OpenStreetMap contributors'}},layers:[{id:'osm',type:'raster',source:'osm'}]},
+ style:{version:8,sources:{
+ satellite:{type:'raster',tiles:['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],tileSize:256,attribution:'Imagery © Esri, Maxar, Earthstar Geographics, and the GIS User Community'},
+ labels:{type:'raster',tiles:['https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'],tileSize:256,attribution:'Labels © Esri'}
+ },layers:[{id:'satellite',type:'raster',source:'satellite'},{id:'labels',type:'raster',source:'labels'}]},
  center:start,zoom:12,pitch:55,bearing:-12,antialias:true
 });
 map.addControl(new maplibregl.NavigationControl({showCompass:true,visualizePitch:true}),'bottom-right');
 map.addControl(new maplibregl.ScaleControl({maxWidth:100,unit:'metric'}),'bottom-left');
-map.on('load',()=>{ $('status').textContent='● MAPA ONLINE'; setInfo('Mapa pronto','Toque em Minha posição para usar o GPS real do aparelho ou pesquise um destino.'); });
+map.on('load',()=>{ $('status').textContent='● MAPA ONLINE'; setInfo('Mapa por satélite pronto','Pesquise um endereço ou local. Toque em Minha posição para usar o GPS do aparelho.'); });
 map.on('error',e=>{if(e && e.error) console.warn('Erro do mapa:',e.error.message)});
-function getLocation(){
+function getLocation(onSuccess){
  if(!navigator.geolocation){toast('Este navegador não oferece localização.');return}
  $('status').textContent='● OBTENDO GPS…';
  navigator.geolocation.getCurrentPosition(pos=>{
   state.position=[pos.coords.longitude,pos.coords.latitude];
   $('status').textContent='● GPS ATIVO';
   map.flyTo({center:state.position,zoom:16,pitch:state.tilted?60:0,duration:1200});
-  if(state.marker)state.marker.remove();
+  if(state.positionMarker)state.positionMarker.remove();
   const node=document.createElement('div');node.style.cssText='width:20px;height:20px;border-radius:50%;background:#35d5a0;border:4px solid white;box-shadow:0 0 0 8px #35d5a044';
-  state.marker=new maplibregl.Marker({element:node}).setLngLat(state.position).setPopup(new maplibregl.Popup().setText('Sua localização atual')).addTo(map);
+  state.positionMarker=new maplibregl.Marker({element:node}).setLngLat(state.position).setPopup(new maplibregl.Popup().setText('Sua localização atual')).addTo(map);
   setInfo('Você está aqui','Precisão estimada: '+Math.round(pos.coords.accuracy)+' m. Atualizado agora.');
   toast('Localização encontrada.');
+  if(typeof onSuccess==='function')onSuccess();
  },err=>{ $('status').textContent='● MAPA ONLINE';const messages={1:'Permita o acesso à localização nas configurações do navegador.',2:'Não foi possível determinar a localização. Verifique o GPS.',3:'A localização demorou demais. Tente novamente.'};toast(messages[err.code]||'Falha ao obter localização.');},{enableHighAccuracy:true,timeout:15000,maximumAge:10000});
 }
 async function searchPlace(q){
- if(!q.trim())return;
+ if(!q.trim()){toast('Digite um endereço ou lugar para pesquisar.');return}
  $('status').textContent='● PESQUISANDO…';
  try{
-  // Busca manual disparada pelo usuário; mantenha uso moderado do serviço público.
-  const url='https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q='+encodeURIComponent(q);
+  const url='https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&addressdetails=1&q='+encodeURIComponent(q);
   const res=await fetch(url,{headers:{'Accept':'application/json'}});
   if(!res.ok)throw new Error('Serviço de busca indisponível');
   const data=await res.json();
-  if(!data.length){toast('Destino não encontrado. Tente adicionar cidade e estado.');$('status').textContent='● MAPA ONLINE';return}
+  if(!data.length){toast('Lugar não encontrado. Tente incluir cidade, bairro e estado.');$('status').textContent='● MAPA ONLINE';return}
+  state.searchMarkers.forEach(m=>m.remove());state.searchMarkers=[];
+  const bounds=new maplibregl.LngLatBounds();
+  data.forEach((p,i)=>{
+   const coords=[Number(p.lon),Number(p.lat)];
+   if(!Number.isFinite(coords[0])||!Number.isFinite(coords[1]))return;
+   const marker=new maplibregl.Marker({color:i===0?'#35d5a0':'#4d9fff'})
+    .setLngLat(coords).setPopup(new maplibregl.Popup({offset:24}).setText(p.display_name)).addTo(map);
+   state.searchMarkers.push(marker);bounds.extend(coords);
+  });
   const p=data[0];state.destination=[Number(p.lon),Number(p.lat)];state.destinationName=p.display_name;
-  map.flyTo({center:state.destination,zoom:15,pitch:state.tilted?58:0,duration:1300});
-  new maplibregl.Marker({color:'#4d9fff'}).setLngLat(state.destination).setPopup(new maplibregl.Popup().setText(p.display_name)).addTo(map).togglePopup();
-  setInfo('Destino encontrado',p.display_name);
+  if(data.length===1)map.flyTo({center:state.destination,zoom:16,pitch:state.tilted?58:0,duration:1300});
+  else map.fitBounds(bounds,{padding:{top:80,bottom:150,left:40,right:80},maxZoom:15,duration:1200});
+  state.searchMarkers[0]?.togglePopup();
+  setInfo(data.length+' resultado(s) encontrado(s)',p.display_name+(data.length>1?' • Veja os marcadores no mapa.':''));
   $('status').textContent='● DESTINO PRONTO';
- }catch(e){console.error(e);$('status').textContent='● MAPA ONLINE';toast('Não foi possível pesquisar agora. Confira a conexão e tente novamente.')}
+ }catch(e){console.error(e);$('status').textContent='● MAPA ONLINE';toast('Falha na busca. Verifique a internet e tente novamente.')}
 }
 $('searchForm').addEventListener('submit',e=>{e.preventDefault();searchPlace($('destination').value)});
 function toggleTilt(){state.tilted=!state.tilted;map.easeTo({pitch:state.tilted?60:0,bearing:state.tilted?-12:0,duration:900});$('tiltBtn').textContent=state.tilted?'3D':'2D';$('tiltBtn').classList.toggle('active',state.tilted);toast(state.tilted?'Visão inclinada ativada.':'Visão 2D ativada.')}
 $('tiltBtn').addEventListener('click',toggleTilt);
 $('locateBtn').addEventListener('click',getLocation);$('myLocation').addEventListener('click',getLocation);
-$('routeBtn').addEventListener('click',()=>{
- if(!state.destination){toast('Pesquise primeiro um destino.');$('destination').focus();return}
- if(!state.position){toast('Obtendo sua localização para preparar a rota…');getLocation();return}
+function openRoute(){
+ if(!state.destination||!state.position)return;
  const origin=state.position[1]+','+state.position[0],dest=state.destination[1]+','+state.destination[0];
  window.open('https://www.google.com/maps/dir/?api=1&origin='+encodeURIComponent(origin)+'&destination='+encodeURIComponent(dest)+'&travelmode=driving','_blank','noopener');
+}
+$('routeBtn').addEventListener('click',()=>{
+ if(!state.destination){toast('Pesquise primeiro um destino.');$('destination').focus();return}
+ if(!state.position){toast('Permita a localização para abrir a rota a partir de onde você está.');getLocation(()=>openRoute());return}
+ openRoute();
 });
 $('openMaps').addEventListener('click',()=>{
  const q=state.destination?state.destinationName:(state.position?state.position[1]+','+state.position[0]:'');
