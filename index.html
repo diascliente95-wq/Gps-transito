@@ -4,6 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#101820">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" href="./icon.svg" type="image/svg+xml">
 <meta name="description" content="GPS 3D com localização atual, busca de destinos e abertura de rota.">
 <title>GPS 3D • Navegação</title>
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.6.2/dist/maplibre-gl.css">
@@ -50,9 +55,12 @@ const map=new maplibregl.Map({
 map.addControl(new maplibregl.NavigationControl({showCompass:true,visualizePitch:true}),'bottom-right');
 map.addControl(new maplibregl.ScaleControl({maxWidth:100,unit:'metric'}),'bottom-left');
 map.on('load',()=>{ $('status').textContent='● MAPA ONLINE'; setInfo('Mapa por satélite pronto','Pesquise um endereço ou local. Toque em Minha posição para usar o GPS do aparelho.'); });
-map.on('error',e=>{if(e && e.error) console.warn('Erro do mapa:',e.error.message)});
+if('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+ window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(err=>console.warn('PWA offline não ativado:',err)));
+}
+map.on('error',e=>{console.warn('Erro do mapa:',e&&e.error?e.error.message:e);$('status').textContent='● MAPA COM FALHA';setInfo('Falha ao carregar parte do mapa','Confira a conexão. Se o mapa não aparecer, recarregue a página ou tente mais tarde.');});
 function getLocation(onSuccess){
- if(!navigator.geolocation){toast('Este navegador não oferece localização.');return}
+ if(!navigator.geolocation){toast('Este navegador não oferece localização. Abra o site em HTTPS e tente novamente.');return}
  $('status').textContent='● OBTENDO GPS…';
  navigator.geolocation.getCurrentPosition(pos=>{
   state.position=[pos.coords.longitude,pos.coords.latitude];
@@ -77,7 +85,7 @@ async function searchPlace(q){
  try{
   // Primeiro tenta busca por nomes e endereços com o Photon, que costuma tolerar melhor textos incompletos.
   for(const term of unique){
-   const photonUrl='https://photon.komoot.io/api/?limit=5&lang=pt&q='+encodeURIComponent(term)+'&lat=-1.36&lon=-48.37';
+   const photonUrl='https://photon.komoot.io/api/?limit=5&lang=pt&q='+encodeURIComponent(term);
    try{
     const response=await fetch(photonUrl,{headers:{'Accept':'application/json'}});
     if(response.ok){
@@ -135,7 +143,8 @@ $('locateBtn').addEventListener('click',getLocation);$('myLocation').addEventLis
 function openRoute(){
  if(!state.destination||!state.position)return;
  const origin=state.position[1]+','+state.position[0],dest=state.destination[1]+','+state.destination[0];
- window.open('https://www.google.com/maps/dir/?api=1&origin='+encodeURIComponent(origin)+'&destination='+encodeURIComponent(dest)+'&travelmode=driving','_blank','noopener');
+ const url='https://www.google.com/maps/dir/?api=1&origin='+encodeURIComponent(origin)+'&destination='+encodeURIComponent(dest)+'&travelmode=driving';
+ window.location.href=url;
 }
 $('routeBtn').addEventListener('click',()=>{
  if(!state.destination){toast('Pesquise primeiro um destino.');$('destination').focus();return}
@@ -144,7 +153,8 @@ $('routeBtn').addEventListener('click',()=>{
 });
 $('openMaps').addEventListener('click',()=>{
  const q=state.destination?state.destinationName:(state.position?state.position[1]+','+state.position[0]:'');
- window.open('https://www.google.com/maps'+(q?'/search/?api=1&query='+encodeURIComponent(q):''),'_blank','noopener');
+ const url='https://www.google.com/maps'+(q?'/search/?api=1&query='+encodeURIComponent(q):'');
+ window.location.href=url;
 });
 $('resetBtn').addEventListener('click',()=>{map.flyTo({center:state.position||start,zoom:state.position?15:12,pitch:state.tilted?55:0,bearing:state.tilted?-12:0,duration:1000});});
 $('trafficBtn').addEventListener('click',()=>{state.traffic=!state.traffic;$('trafficBtn').classList.toggle('active',state.traffic);toast(state.traffic?'Trânsito ao vivo não está configurado. Adicione um provedor de tráfego para dados reais.':'Camada de trânsito desligada.');if(state.traffic){setInfo('Trânsito','Esta versão ainda não possui fonte de trânsito ao vivo. Não exibimos congestionamentos simulados.')}else{setInfo('Mapa pronto','Use Minha posição ou pesquise um destino.')}});
