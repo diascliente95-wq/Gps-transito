@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#101820">
+<meta name="description" content="GPS 3D com localização atual, busca de destinos e abertura de rota.">
+<title>GPS 3D • Navegação</title>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.6.2/dist/maplibre-gl.css">
+<style>
+:root{color-scheme:dark;--bg:#0b1118;--panel:#121c26;--line:#263746;--text:#f4f7fa;--muted:#9fb0c0;--accent:#35d5a0;--blue:#4d9fff}
+*{box-sizing:border-box}html,body{margin:0;height:100%;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text)}body{overflow:hidden}.app{height:100dvh;display:grid;grid-template-rows:auto 1fr auto}.top{z-index:3;padding:calc(env(safe-area-inset-top) + 12px) 14px 12px;background:linear-gradient(180deg,rgba(8,14,20,.98),rgba(8,14,20,.86));border-bottom:1px solid #243442}.brand{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}.logo{display:flex;align-items:center;gap:9px;font-weight:800;letter-spacing:.2px}.pin{width:34px;height:34px;border-radius:12px;background:var(--accent);color:#052018;display:grid;place-items:center;font-size:20px}.status{font-size:11px;color:var(--accent);border:1px solid #245b4b;padding:5px 8px;border-radius:30px}.searchrow{display:flex;gap:8px}.searchrow input{min-width:0;flex:1;padding:13px 14px;border-radius:14px;border:1px solid #314352;background:#101a23;color:#fff;font-size:15px;outline:none}.searchrow input:focus{border-color:var(--accent)}button{font:inherit;border:0;cursor:pointer}.searchbtn{border-radius:13px;padding:0 16px;background:var(--accent);color:#06251b;font-weight:800}.sub{font-size:11px;color:var(--muted);margin-top:7px}#map{width:100%;height:100%;min-height:0;background:#172630}.map-wrap{position:relative;min-height:0}.map-controls{position:absolute;right:12px;top:12px;z-index:2;display:flex;flex-direction:column;gap:8px}.mapbtn{height:43px;min-width:43px;border-radius:14px;background:rgba(12,21,29,.94);color:white;border:1px solid #3a4b59;box-shadow:0 5px 18px #0005;font-weight:700}.mapbtn.active{background:var(--accent);color:#06251b;border-color:var(--accent)}.info{position:absolute;left:12px;right:66px;bottom:12px;z-index:2;max-width:340px;padding:12px 14px;border:1px solid #334754;border-radius:16px;background:rgba(10,17,24,.93);backdrop-filter:blur(12px);box-shadow:0 8px 22px #0005}.info strong{font-size:13px;display:block}.info p{margin:4px 0 0;color:var(--muted);font-size:11px;line-height:1.4}.bottom{z-index:3;padding:10px 12px calc(env(safe-area-inset-bottom) + 10px);background:var(--panel);border-top:1px solid var(--line)}.actions{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}.action{background:#1b2935;border:1px solid #2b3d4c;color:#eef5fa;border-radius:13px;padding:10px 3px;display:flex;flex-direction:column;align-items:center;gap:5px;font-size:10px;font-weight:650}.action span{font-size:18px}.action.primary{background:var(--accent);color:#07251d;border-color:var(--accent)}.footnote{text-align:center;color:#728696;font-size:10px;margin-top:8px}.toast{position:absolute;top:95px;left:50%;transform:translateX(-50%);z-index:5;background:#152633;border:1px solid #3a5264;padding:10px 14px;border-radius:12px;font-size:12px;max-width:90%;display:none}.toast.show{display:block}.maplibregl-ctrl-group{background:#111d27!important;border:1px solid #3a4b59!important}.maplibregl-ctrl button span{filter:invert(1)}.maplibregl-ctrl-attrib{background:#0a1118cc!important;color:#dce6ed!important}.maplibregl-ctrl-attrib a{color:#bce9d9!important}
+@media(min-width:760px){.app{max-width:1080px;margin:auto;height:100dvh;border-left:1px solid #20313e;border-right:1px solid #20313e}.top{padding:18px 22px 14px}.brand{margin-bottom:12px}.bottom{padding:12px 20px}.actions{grid-template-columns:repeat(4,minmax(120px,1fr));max-width:620px;margin:auto}.info{bottom:18px;left:18px}.map-controls{right:18px;top:18px}}
+</style>
+</head>
+<body>
+<div class="app">
+<header class="top">
+  <div class="brand"><div class="logo"><div class="pin">➤</div><div>GPS <span style="color:var(--accent)">3D</span><div style="font-size:10px;color:var(--muted);font-weight:500">NAVEGAÇÃO INTELIGENTE</div></div></div><div class="status" id="status">● MAPA ONLINE</div></div>
+  <form class="searchrow" id="searchForm"><input id="destination" autocomplete="street-address" placeholder="Para onde você quer ir?" aria-label="Destino"><button class="searchbtn" type="submit">Buscar</button></form>
+  <div class="sub">Pesquise um lugar ou endereço e abra a rota no navegador.</div>
+</header>
+<main class="map-wrap">
+  <div id="map" aria-label="Mapa interativo"></div>
+  <div class="map-controls"><button class="mapbtn active" id="tiltBtn" title="Alternar visão 3D">3D</button><button class="mapbtn" id="locateBtn" title="Minha localização">◎</button><button class="mapbtn" id="trafficBtn" title="Camada de trânsito">🚦</button></div>
+  <div class="info"><strong id="infoTitle">Explore o mapa</strong><p id="infoText">Ative sua localização para centralizar o mapa. A visão inclinada mostra a perspectiva 3D; o relevo detalhado depende do provedor de mapas.</p></div>
+  <div class="toast" id="toast" role="status"></div>
+</main>
+<footer class="bottom">
+  <div class="actions"><button class="action primary" id="myLocation"><span>◎</span>Minha posição</button><button class="action" id="routeBtn"><span>➤</span>Traçar rota</button><button class="action" id="openMaps"><span>🗺️</span>Google Maps</button><button class="action" id="resetBtn"><span>⌖</span>Visão geral</button></div>
+  <div class="footnote">GPS do aparelho requer permissão e pode variar conforme o sinal.</div>
+</footer>
+</div>
+<script src="https://unpkg.com/maplibre-gl@5.6.2/dist/maplibre-gl.js"></script>
+<script>
+(function(){
+const $=id=>document.getElementById(id);
+const state={position:null,destination:null,destinationName:"",marker:null,routeLine:null,tilted:true,traffic:false};
+const start=[-48.4902,-1.4558]; // Belém, Pará: ponto inicial ilustrativo até obter GPS
+function toast(msg){const el=$('toast');el.textContent=msg;el.classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.classList.remove('show'),3500)}
+function setInfo(title,text){$('infoTitle').textContent=title;$('infoText').textContent=text}
+const map=new maplibregl.Map({
+ container:'map',
+ style:{version:8,sources:{osm:{type:'raster',tiles:['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],tileSize:256,attribution:'© OpenStreetMap contributors'}},layers:[{id:'osm',type:'raster',source:'osm'}]},
+ center:start,zoom:12,pitch:55,bearing:-12,antialias:true
+});
+map.addControl(new maplibregl.NavigationControl({showCompass:true,visualizePitch:true}),'bottom-right');
+map.addControl(new maplibregl.ScaleControl({maxWidth:100,unit:'metric'}),'bottom-left');
+map.on('load',()=>{ $('status').textContent='● MAPA ONLINE'; setInfo('Mapa pronto','Toque em Minha posição para usar o GPS real do aparelho ou pesquise um destino.'); });
+map.on('error',e=>{if(e && e.error) console.warn('Erro do mapa:',e.error.message)});
+function getLocation(){
+ if(!navigator.geolocation){toast('Este navegador não oferece localização.');return}
+ $('status').textContent='● OBTENDO GPS…';
+ navigator.geolocation.getCurrentPosition(pos=>{
+  state.position=[pos.coords.longitude,pos.coords.latitude];
+  $('status').textContent='● GPS ATIVO';
+  map.flyTo({center:state.position,zoom:16,pitch:state.tilted?60:0,duration:1200});
+  if(state.marker)state.marker.remove();
+  const node=document.createElement('div');node.style.cssText='width:20px;height:20px;border-radius:50%;background:#35d5a0;border:4px solid white;box-shadow:0 0 0 8px #35d5a044';
+  state.marker=new maplibregl.Marker({element:node}).setLngLat(state.position).setPopup(new maplibregl.Popup().setText('Sua localização atual')).addTo(map);
+  setInfo('Você está aqui','Precisão estimada: '+Math.round(pos.coords.accuracy)+' m. Atualizado agora.');
+  toast('Localização encontrada.');
+ },err=>{ $('status').textContent='● MAPA ONLINE';const messages={1:'Permita o acesso à localização nas configurações do navegador.',2:'Não foi possível determinar a localização. Verifique o GPS.',3:'A localização demorou demais. Tente novamente.'};toast(messages[err.code]||'Falha ao obter localização.');},{enableHighAccuracy:true,timeout:15000,maximumAge:10000});
+}
+async function searchPlace(q){
+ if(!q.trim())return;
+ $('status').textContent='● PESQUISANDO…';
+ try{
+  // Busca manual disparada pelo usuário; mantenha uso moderado do serviço público.
+  const url='https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q='+encodeURIComponent(q);
+  const res=await fetch(url,{headers:{'Accept':'application/json'}});
+  if(!res.ok)throw new Error('Serviço de busca indisponível');
+  const data=await res.json();
+  if(!data.length){toast('Destino não encontrado. Tente adicionar cidade e estado.');$('status').textContent='● MAPA ONLINE';return}
+  const p=data[0];state.destination=[Number(p.lon),Number(p.lat)];state.destinationName=p.display_name;
+  map.flyTo({center:state.destination,zoom:15,pitch:state.tilted?58:0,duration:1300});
+  new maplibregl.Marker({color:'#4d9fff'}).setLngLat(state.destination).setPopup(new maplibregl.Popup().setText(p.display_name)).addTo(map).togglePopup();
+  setInfo('Destino encontrado',p.display_name);
+  $('status').textContent='● DESTINO PRONTO';
+ }catch(e){console.error(e);$('status').textContent='● MAPA ONLINE';toast('Não foi possível pesquisar agora. Confira a conexão e tente novamente.')}
+}
+$('searchForm').addEventListener('submit',e=>{e.preventDefault();searchPlace($('destination').value)});
+function toggleTilt(){state.tilted=!state.tilted;map.easeTo({pitch:state.tilted?60:0,bearing:state.tilted?-12:0,duration:900});$('tiltBtn').textContent=state.tilted?'3D':'2D';$('tiltBtn').classList.toggle('active',state.tilted);toast(state.tilted?'Visão inclinada ativada.':'Visão 2D ativada.')}
+$('tiltBtn').addEventListener('click',toggleTilt);
+$('locateBtn').addEventListener('click',getLocation);$('myLocation').addEventListener('click',getLocation);
+$('routeBtn').addEventListener('click',()=>{
+ if(!state.destination){toast('Pesquise primeiro um destino.');$('destination').focus();return}
+ if(!state.position){toast('Obtendo sua localização para preparar a rota…');getLocation();return}
+ const origin=state.position[1]+','+state.position[0],dest=state.destination[1]+','+state.destination[0];
+ window.open('https://www.google.com/maps/dir/?api=1&origin='+encodeURIComponent(origin)+'&destination='+encodeURIComponent(dest)+'&travelmode=driving','_blank','noopener');
+});
+$('openMaps').addEventListener('click',()=>{
+ const q=state.destination?state.destinationName:(state.position?state.position[1]+','+state.position[0]:'');
+ window.open('https://www.google.com/maps'+(q?'/search/?api=1&query='+encodeURIComponent(q):''),'_blank','noopener');
+});
+$('resetBtn').addEventListener('click',()=>{map.flyTo({center:state.position||start,zoom:state.position?15:12,pitch:state.tilted?55:0,bearing:state.tilted?-12:0,duration:1000});});
+$('trafficBtn').addEventListener('click',()=>{state.traffic=!state.traffic;$('trafficBtn').classList.toggle('active',state.traffic);toast(state.traffic?'Trânsito ao vivo não está configurado. Adicione um provedor de tráfego para dados reais.':'Camada de trânsito desligada.');if(state.traffic){setInfo('Trânsito','Esta versão ainda não possui fonte de trânsito ao vivo. Não exibimos congestionamentos simulados.')}else{setInfo('Mapa pronto','Use Minha posição ou pesquise um destino.')}});
+})();
+</script>
+</body>
+</html>
