@@ -1,0 +1,16 @@
+{
+  "id": "/",
+  "name": "GPS 3D • Navegação",
+  "short_name": "GPS 3D",
+  "description": "Mapa por satélite, pesquisa de lugares e acesso a rotas.",
+  "lang": "pt-BR",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0b1118",
+  "theme_color": "#101820",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
