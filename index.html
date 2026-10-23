@@ -67,30 +67,66 @@ function getLocation(onSuccess){
  },err=>{ $('status').textContent='● MAPA ONLINE';const messages={1:'Permita o acesso à localização nas configurações do navegador.',2:'Não foi possível determinar a localização. Verifique o GPS.',3:'A localização demorou demais. Tente novamente.'};toast(messages[err.code]||'Falha ao obter localização.');},{enableHighAccuracy:true,timeout:15000,maximumAge:10000});
 }
 async function searchPlace(q){
- if(!q.trim()){toast('Digite um endereço ou lugar para pesquisar.');return}
+ const query=q.trim();
+ if(!query){toast('Digite um endereço ou lugar para pesquisar.');return}
  $('status').textContent='● PESQUISANDO…';
+ const clean=s=>s.replace(/[,;]\\s*(em frente|perto de|ao lado|próximo de).*$/i,'').replace(/\\s+/g,' ').trim();
+ const queries=[query,clean(query),clean(query)+', Pará, Brasil'];
+ const unique=[...new Set(queries)].filter(Boolean);
+ let results=[];
  try{
-  const url='https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&addressdetails=1&q='+encodeURIComponent(q);
-  const res=await fetch(url,{headers:{'Accept':'application/json'}});
-  if(!res.ok)throw new Error('Serviço de busca indisponível');
-  const data=await res.json();
-  if(!data.length){toast('Lugar não encontrado. Tente incluir cidade, bairro e estado.');$('status').textContent='● MAPA ONLINE';return}
+  // Primeiro tenta busca por nomes e endereços com o Photon, que costuma tolerar melhor textos incompletos.
+  for(const term of unique){
+   const photonUrl='https://photon.komoot.io/api/?limit=5&lang=pt&q='+encodeURIComponent(term)+'&lat=-1.36&lon=-48.37';
+   try{
+    const response=await fetch(photonUrl,{headers:{'Accept':'application/json'}});
+    if(response.ok){
+     const body=await response.json();
+     results=(body.features||[]).map(f=>{
+      const p=f.properties||{},c=f.geometry&&f.geometry.coordinates;
+      const label=[p.name,p.housenumber,p.street,p.district,p.locality,p.city,p.county,p.state,p.country].filter((v,i,a)=>v&&a.indexOf(v)===i).join(', ');
+      return {lon:c&&c[0],lat:c&&c[1],display_name:label||term};
+     }).filter(p=>Number.isFinite(Number(p.lon))&&Number.isFinite(Number(p.lat)));
+    }
+   }catch(e){console.warn('Photon indisponível',e)}
+   if(results.length)break;
+  }
+  // Fallback: Nominatim, tentando o texto original e uma consulta com estado/país.
+  if(!results.length){
+   for(const term of unique){
+    const url='https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&addressdetails=1&q='+encodeURIComponent(term);
+    const response=await fetch(url,{headers:{'Accept':'application/json'}});
+    if(response.ok)results=await response.json();
+    if(results.length)break;
+   }
+  }
+  if(!results.length){
+   $('status').textContent='● MAPA ONLINE';
+   setInfo('Nenhum resultado encontrado','Tente pesquisar com bairro, município e estado. Exemplo: Estrada do Genipaúba, Santa Bárbara do Pará, Pará.');
+   toast('Não encontrei esse texto. Tente adicionar o município e o estado.');
+   return;
+  }
   state.searchMarkers.forEach(m=>m.remove());state.searchMarkers=[];
   const bounds=new maplibregl.LngLatBounds();
-  data.forEach((p,i)=>{
+  results.forEach((p,i)=>{
    const coords=[Number(p.lon),Number(p.lat)];
    if(!Number.isFinite(coords[0])||!Number.isFinite(coords[1]))return;
    const marker=new maplibregl.Marker({color:i===0?'#35d5a0':'#4d9fff'})
     .setLngLat(coords).setPopup(new maplibregl.Popup({offset:24}).setText(p.display_name)).addTo(map);
    state.searchMarkers.push(marker);bounds.extend(coords);
   });
-  const p=data[0];state.destination=[Number(p.lon),Number(p.lat)];state.destinationName=p.display_name;
-  if(data.length===1)map.flyTo({center:state.destination,zoom:16,pitch:state.tilted?58:0,duration:1300});
+  const first=results[0];
+  state.destination=[Number(first.lon),Number(first.lat)];state.destinationName=first.display_name;
+  if(results.length===1)map.flyTo({center:state.destination,zoom:16,pitch:state.tilted?58:0,duration:1300});
   else map.fitBounds(bounds,{padding:{top:80,bottom:150,left:40,right:80},maxZoom:15,duration:1200});
-  state.searchMarkers[0]?.togglePopup();
-  setInfo(data.length+' resultado(s) encontrado(s)',p.display_name+(data.length>1?' • Veja os marcadores no mapa.':''));
+  if(state.searchMarkers[0])state.searchMarkers[0].togglePopup();
+  setInfo(results.length+' resultado(s) encontrado(s)',first.display_name+(results.length>1?' • Veja os marcadores no mapa.':''));
   $('status').textContent='● DESTINO PRONTO';
- }catch(e){console.error(e);$('status').textContent='● MAPA ONLINE';toast('Falha na busca. Verifique a internet e tente novamente.')}
+ }catch(e){
+  console.error(e);$('status').textContent='● MAPA ONLINE';
+  setInfo('Busca temporariamente indisponível','Confira a conexão e tente novamente. Você também pode incluir cidade e estado no endereço.');
+  toast('Falha no serviço de busca. Tente novamente em instantes.');
+ }
 }
 $('searchForm').addEventListener('submit',e=>{e.preventDefault();searchPlace($('destination').value)});
 function toggleTilt(){state.tilted=!state.tilted;map.easeTo({pitch:state.tilted?60:0,bearing:state.tilted?-12:0,duration:900});$('tiltBtn').textContent=state.tilted?'3D':'2D';$('tiltBtn').classList.toggle('active',state.tilted);toast(state.tilted?'Visão inclinada ativada.':'Visão 2D ativada.')}
