@@ -205,7 +205,7 @@ async function calculateRoute(){
   if(!response.ok)throw Error('Servidor de rotas indisponível');
   const body=await response.json();if(body.code!=='Ok'||!body.routes?.length)throw Error('Não existe rota rodoviária disponível entre esses pontos.');
   const route=body.routes[0];drawRoute(route.geometry);
-  state.routeStepsList=(route.legs||[]).flatMap(leg=>(leg.steps||[]).map(step=>({instruction:step.maneuver?.type==='arrive'?'Você chegou ao destino':step.maneuver?.modifier?('Siga '+step.maneuver.modifier):step.name?('Continue por '+step.name):'Continue em frente',distance:step.distance,name:step.name||''})));
+  state.routeStepsList=(route.legs||[]).flatMap(leg=>(leg.steps||[]).map(step=>({instruction:step.maneuver?.type==='arrive'?'Você chegou ao destino':step.maneuver?.modifier?('Em seguida, '+step.maneuver.modifier+' '+(step.name?'para '+step.name:'')):step.name?('Continue por '+step.name):'Continue em frente',distance:step.distance,name:step.name||'',location:step.maneuver?.location||null})));
   $('routeTitle').textContent='Rota no GPS 3D';$('routeSummary').textContent=distanceLabel(route.distance)+' • '+durationLabel(route.duration)+' estimados • '+state.destinationName;
   renderSteps();const bounds=new maplibregl.LngLatBounds();route.geometry.coordinates.forEach(c=>bounds.extend(c));map.fitBounds(bounds,{padding:{top:140,bottom:190,left:55,right:70},pitch:0,maxZoom:15,duration:1100});
   setInfo('Rota traçada',distanceLabel(route.distance)+' • '+durationLabel(route.duration)+' estimados. Toque em Iniciar navegação para receber instruções por voz.');
@@ -224,11 +224,21 @@ function startGuidance(){
   map.easeTo({center:current,zoom:Math.max(map.getZoom(),15),pitch:state.tilted?38:0,duration:500});
   if(state.positionMarker)state.positionMarker.setLngLat(current);
   else{const node=document.createElement('div');node.style.cssText='width:20px;height:20px;border-radius:50%;background:#35d5a0;border:4px solid white;box-shadow:0 0 0 8px #35d5a044';state.positionMarker=new maplibregl.Marker({element:node}).setLngLat(current).addTo(map)}
-  const remaining=state.routeStepsList.filter(s=>s.distance>0);
-  if(remaining.length&&state.lastSpokenStep<0){speak('Siga a rota indicada.');state.lastSpokenStep=0}
-  // Se o usuário sair do trajeto, recalcular quando estiver a mais de aproximadamente 100 m da linha.
-  if(state.lastPosition&&distanceMeters(current,state.lastPosition)>1000&&state.guidanceActive){state.lastPosition=current;calculateRoute();speak('Atualizando a rota.')}
-  else state.lastPosition=current;
+  let closestIndex=0,closestDistance=Infinity;
+  state.routeStepsList.forEach((step,i)=>{if(step.location){const d=distanceMeters(current,step.location);if(d<closestDistance){closestDistance=d;closestIndex=i}}});
+  if(closestDistance<350&&closestIndex>state.lastSpokenStep){
+   const step=state.routeStepsList[closestIndex];speak(step.instruction+(step.name?' pela via '+step.name:''));state.lastSpokenStep=closestIndex;
+   if(step.instruction.includes('chegou ao destino')){stopGuidance();setInfo('Você chegou ao destino',state.destinationName);toast('Você chegou ao destino.')}
+  }
+  // Recalcula apenas quando a posição estiver claramente distante da rota calculada.
+  if(state.routeGeo&&state.guidanceActive){
+   const coords=state.routeGeo.coordinates;let nearest=Infinity;
+   for(let i=0;i<coords.length;i+=Math.max(1,Math.floor(coords.length/120))){nearest=Math.min(nearest,distanceMeters(current,coords[i]))}
+   if(nearest>120&&(!state.lastPosition||distanceMeters(current,state.lastPosition)>35)){
+    state.lastPosition=current;speak('Você saiu da rota. Recalculando.');calculateRoute();return;
+   }
+  }
+  state.lastPosition=current;
  },err=>{toast(err.code===1?'Permita a localização para navegar.':'Sinal de GPS fraco. Tentando continuar.');},{enableHighAccuracy:true,maximumAge:2000,timeout:15000});
 }
 function distanceMeters(a,b){const R=6371000,rad=x=>x*Math.PI/180;const dLat=rad(b[1]-a[1]),dLon=rad(b[0]-a[0]);const x=Math.sin(dLat/2)**2+Math.cos(rad(a[1]))*Math.cos(rad(b[1]))*Math.sin(dLon/2)**2;return 2*R*Math.asin(Math.sqrt(x))}
