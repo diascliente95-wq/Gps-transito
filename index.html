@@ -27,7 +27,7 @@
 </header>
 <main class="map-wrap">
   <div id="map" aria-label="Mapa interativo"></div>
-  <div class="map-controls"><button class="mapbtn active" id="tiltBtn" title="Alternar visão 3D">3D</button><button class="mapbtn" id="locateBtn" title="Minha localização">◎</button><button class="mapbtn" id="trafficBtn" title="Camada de trânsito">🚦</button></div>
+  <div class="map-controls"><button class="mapbtn active" id="tiltBtn" title="Alternar visão 3D">3D</button><button class="mapbtn" id="locateBtn" title="Minha localização">◎</button><button class="mapbtn" id="trafficBtn" title="Alternar satélite e mapa de ruas">🗺️</button></div>
   <div class="info"><strong id="infoTitle">Explore o mapa</strong><p id="infoText">Ative sua localização para centralizar o mapa. A visão inclinada mostra a perspectiva 3D; o relevo detalhado depende do provedor de mapas.</p></div>
   <div class="toast" id="toast" role="status"></div>
 </main>
@@ -40,7 +40,7 @@
 <script>
 (function(){
 const $=id=>document.getElementById(id);
-const state={position:null,destination:null,destinationName:"",marker:null,positionMarker:null,tilted:true,traffic:false,searchMarkers:[]};
+const state={position:null,destination:null,destinationName:"",marker:null,positionMarker:null,tilted:true,traffic:false,streetMode:false,searchMarkers:[]};
 const start=[-48.4902,-1.4558]; // Belém, Pará: ponto inicial ilustrativo até obter GPS
 function toast(msg){const el=$('toast');el.textContent=msg;el.classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.classList.remove('show'),3500)}
 function setInfo(title,text){$('infoTitle').textContent=title;$('infoText').textContent=text}
@@ -61,9 +61,10 @@ const map=new maplibregl.Map({
  container:'map',
  style:{version:8,sources:{
  satellite:{type:'raster',tiles:['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],tileSize:256,attribution:'Imagery © Esri, Maxar, Earthstar Geographics, and the GIS User Community'},
- labels:{type:'raster',tiles:['https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'],tileSize:256,attribution:'Labels © Esri'}
- },layers:[{id:'satellite',type:'raster',source:'satellite'},{id:'labels',type:'raster',source:'labels'}]},
- center:start,zoom:12,pitch:55,bearing:-12,antialias:true
+ labels:{type:'raster',tiles:['https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'],tileSize:256,attribution:'Labels © Esri'},
+ streets:{type:'raster',tiles:['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],tileSize:256,attribution:'© OpenStreetMap contributors'}
+ },layers:[{id:'satellite',type:'raster',source:'satellite'},{id:'labels',type:'raster',source:'labels'},{id:'streets',type:'raster',source:'streets',layout:{visibility:'none'}}]},
+ center:start,zoom:12,pitch:38,bearing:-8,antialias:true
 });
 map.addControl(new maplibregl.NavigationControl({showCompass:true,visualizePitch:true}),'bottom-right');
 map.addControl(new maplibregl.ScaleControl({maxWidth:100,unit:'metric'}),'bottom-left');
@@ -78,7 +79,7 @@ function getLocation(onSuccess){
  navigator.geolocation.getCurrentPosition(pos=>{
   state.position=[pos.coords.longitude,pos.coords.latitude];
   $('status').textContent='● GPS ATIVO';
-  map.flyTo({center:state.position,zoom:16,pitch:state.tilted?60:0,duration:1200});
+  map.flyTo({center:state.position,zoom:15,pitch:state.tilted?38:0,bearing:state.tilted?-8:0,duration:1200});
   if(state.positionMarker)state.positionMarker.remove();
   const node=document.createElement('div');node.style.cssText='width:20px;height:20px;border-radius:50%;background:#35d5a0;border:4px solid white;box-shadow:0 0 0 8px #35d5a044';
   state.positionMarker=new maplibregl.Marker({element:node}).setLngLat(state.position).setPopup(new maplibregl.Popup().setText('Sua localização atual')).addTo(map);
@@ -139,7 +140,7 @@ async function searchPlace(q){
   });
   const first=results[0];
   state.destination=[Number(first.lon),Number(first.lat)];state.destinationName=first.display_name;
-  if(results.length===1)map.flyTo({center:state.destination,zoom:16,pitch:state.tilted?58:0,duration:1300});
+  if(results.length===1)map.flyTo({center:state.destination,zoom:14.5,pitch:state.tilted?38:0,bearing:-8,duration:1300});
   else map.fitBounds(bounds,{padding:{top:80,bottom:150,left:40,right:80},maxZoom:15,duration:1200});
   if(state.searchMarkers[0])state.searchMarkers[0].togglePopup();
   setInfo(results.length+' resultado(s) encontrado(s)',first.display_name+(results.length>1?' • Veja os marcadores no mapa.':''));
@@ -151,7 +152,7 @@ async function searchPlace(q){
  }
 }
 $('searchForm').addEventListener('submit',e=>{e.preventDefault();searchPlace($('destination').value)});
-function toggleTilt(){state.tilted=!state.tilted;map.easeTo({pitch:state.tilted?60:0,bearing:state.tilted?-12:0,duration:900});$('tiltBtn').textContent=state.tilted?'3D':'2D';$('tiltBtn').classList.toggle('active',state.tilted);toast(state.tilted?'Visão inclinada ativada.':'Visão 2D ativada.')}
+function toggleTilt(){state.tilted=!state.tilted;map.easeTo({pitch:state.tilted?38:0,bearing:state.tilted?-8:0,duration:900});$('tiltBtn').textContent=state.tilted?'3D':'2D';$('tiltBtn').classList.toggle('active',state.tilted);toast(state.tilted?'Visão 3D ampla ativada.':'Visão 2D ativada.')}
 $('tiltBtn').addEventListener('click',toggleTilt);
 $('locateBtn').addEventListener('click',getLocation);$('myLocation').addEventListener('click',getLocation);
 function openRoute(){
@@ -170,8 +171,18 @@ $('openMaps').addEventListener('click',()=>{
  const url='https://www.google.com/maps'+(q?'/search/?api=1&query='+encodeURIComponent(q):'');
  window.location.href=url;
 });
-$('resetBtn').addEventListener('click',()=>{map.flyTo({center:state.position||start,zoom:state.position?15:12,pitch:state.tilted?55:0,bearing:state.tilted?-12:0,duration:1000});});
-$('trafficBtn').addEventListener('click',()=>{state.traffic=!state.traffic;$('trafficBtn').classList.toggle('active',state.traffic);toast(state.traffic?'Trânsito ao vivo não está configurado. Adicione um provedor de tráfego para dados reais.':'Camada de trânsito desligada.');if(state.traffic){setInfo('Trânsito','Esta versão ainda não possui fonte de trânsito ao vivo. Não exibimos congestionamentos simulados.')}else{setInfo('Mapa pronto','Use Minha posição ou pesquise um destino.')}});
+$('resetBtn').addEventListener('click',()=>{map.flyTo({center:state.destination||state.position||start,zoom:state.destination?14.5:(state.position?15:12),pitch:state.tilted?38:0,bearing:state.tilted?-8:0,duration:1000});});
+$('trafficBtn').addEventListener('click',()=>{
+ if(!map.isStyleLoaded()){toast('Aguarde o mapa carregar e tente novamente.');return}
+ state.streetMode=!state.streetMode;
+ map.setLayoutProperty('satellite','visibility',state.streetMode?'none':'visible');
+ map.setLayoutProperty('labels','visibility',state.streetMode?'none':'visible');
+ map.setLayoutProperty('streets','visibility',state.streetMode?'visible':'none');
+ $('trafficBtn').classList.toggle('active',state.streetMode);
+ $('trafficBtn').textContent=state.streetMode?'🛰️':'🗺️';
+ setInfo(state.streetMode?'Mapa de ruas':'Mapa por satélite',state.destinationName?'Destino mantido: '+state.destinationName:'A posição e o zoom foram mantidos. Você pode alternar entre satélite e ruas.');
+ toast(state.streetMode?'Mapa de ruas ativado.':'Mapa de satélite ativado.');
+});
 })();
 </script>
 </body>
