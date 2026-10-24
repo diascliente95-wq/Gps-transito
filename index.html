@@ -32,7 +32,7 @@
   <div class="toast" id="toast" role="status"></div>
 </main>
 <footer class="bottom">
-  <div class="actions"><button class="action primary" id="myLocation"><span>◎</span>Minha posição</button><button class="action" id="routeBtn"><span>➤</span>Traçar rota</button><button class="action" id="openMaps"><span>🗺️</span>Google Maps</button><button class="action" id="resetBtn"><span>⌖</span>Visão geral</button></div>
+  <div class="actions"><button class="action primary" id="myLocation"><span>◎</span>Minha posição</button><button class="action" id="routeBtn"><span>➤</span>Traçar rota</button><button class="action" id="openMaps"><span>🗺️</span>Mapa no app</button><button class="action" id="resetBtn"><span>⌖</span>Visão geral</button></div>
   <div class="footnote">GPS do aparelho requer permissão. Use os controles para alternar 2D/3D e satélite/ruas.</div>
 </footer>
 </div>
@@ -255,9 +255,16 @@ $('clearRoute').addEventListener('click',()=>{
  state.routeGeo=null;state.routes=[];state.selectedRouteIndex=0;state.routeStepsList=[];$('routeStepsList').innerHTML='';$('routeAlternatives').innerHTML='';$('tripSpeed').textContent='—';$('tripRemaining').textContent='—';$('tripEta').textContent='—';$('routePanel').classList.remove('show');setInfo('Rota encerrada','Pesquise outro destino ou trace uma nova rota.');
 });
 $('openMaps').addEventListener('click',()=>{
- const q=state.destination?state.destinationName:(state.position?state.position[1]+','+state.position[0]:'');
- const url='https://www.google.com/maps'+(q?'/search/?api=1&query='+encodeURIComponent(q):'');
- window.location.href=url;
+ // Mantém a experiência dentro do GPS 3D: enquadra o destino ou a posição atual no mapa integrado.
+ const target=state.destination||state.position;
+ if(target){
+  map.flyTo({center:target,zoom:state.destination?15:16,pitch:state.tilted?38:0,bearing:state.tilted?-8:0,duration:900});
+  setInfo(state.destination?'Destino no mapa':'Sua localização no mapa',state.destinationName||'Sua posição atual está centralizada no GPS 3D.');
+  if(state.destination&&state.position){calculateRoute();}
+  else toast('Mapa exibido dentro do GPS 3D.');
+ }else{
+  getLocation(()=>{if(state.position)map.flyTo({center:state.position,zoom:16,pitch:state.tilted?38:0,duration:900});setInfo('Sua localização no mapa','Você continua dentro do GPS 3D. Pesquise um destino para traçar a rota.');});
+ }
 });
 $('resetBtn').addEventListener('click',()=>{map.flyTo({center:state.destination||state.position||start,zoom:state.destination?14.5:(state.position?15:12),pitch:state.tilted?38:0,bearing:state.tilted?-8:0,duration:1000});});
 $('trafficBtn').addEventListener('click',()=>{
