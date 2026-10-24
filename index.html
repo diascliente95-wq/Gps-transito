@@ -27,20 +27,20 @@
 </header>
 <main class="map-wrap">
   <div id="map" aria-label="Mapa interativo"></div><div id="routePanel" class="routepanel" aria-live="polite"><strong id="routeTitle">Rota</strong><p id="routeSummary"></p><button id="clearRoute" type="button">Encerrar rota</button></div>
-  <div class="map-controls"><div class="view-switch" role="group" aria-label="Modo de visualização"><button class="mapbtn active" id="view3dBtn" type="button" aria-pressed="true" title="Visualização 3D">3D</button><button class="mapbtn" id="view2dBtn" type="button" aria-pressed="false" title="Visualização 2D">2D</button></div><button class="mapbtn" id="locateBtn" title="Minha localização">◎</button><button class="mapbtn" id="trafficBtn" title="Alternar satélite e mapa de ruas">🗺️</button></div>
+  <div class="map-controls"><div class="view-switch" role="group" aria-label="Modo de visualização"><button class="mapbtn active" id="view3dBtn" type="button" aria-pressed="true" title="Visualização 3D">3D</button><button class="mapbtn" id="view2dBtn" type="button" aria-pressed="false" title="Visualização 2D">2D</button></div><button class="mapbtn" id="locateBtn" title="Minha localização">◎</button><button class="mapbtn" id="trafficBtn" title="Alternar satélite e mapa de ruas">🗺️</button><button class="mapbtn" id="liveTrafficBtn" title="Ativar trânsito em tempo real">🚦</button></div>
   <div class="info"><strong id="infoTitle">Explore o mapa</strong><p id="infoText">Ative sua localização para centralizar o mapa. A visão inclinada mostra a perspectiva 3D; o relevo detalhado depende do provedor de mapas.</p></div>
   <div class="toast" id="toast" role="status"></div>
 </main>
 <footer class="bottom">
   <div class="actions"><button class="action primary" id="myLocation"><span>◎</span>Minha posição</button><button class="action" id="routeBtn"><span>➤</span>Traçar rota</button><button class="action" id="openMaps"><span>🗺️</span>Google Maps</button><button class="action" id="resetBtn"><span>⌖</span>Visão geral</button></div>
-  <div class="footnote">GPS do aparelho requer permissão e pode variar conforme o sinal.</div>
+  <div class="footnote">GPS do aparelho requer permissão. Trânsito ao vivo depende de fonte de dados disponível.</div>
 </footer>
 </div>
 <script src="https://unpkg.com/maplibre-gl@5.6.2/dist/maplibre-gl.js"></script>
 <script>
 (function(){
 const $=id=>document.getElementById(id);
-const state={position:null,destination:null,destinationName:"",marker:null,positionMarker:null,tilted:true,traffic:false,streetMode:false,searchMarkers:[],routeSteps:[],routeGeo:null,watchId:null};
+const state={position:null,destination:null,destinationName:"",marker:null,positionMarker:null,tilted:true,traffic:false,streetMode:false,searchMarkers:[],routeSteps:[],routeGeo:null,watchId:null,trafficTimer:null};
 const start=[-48.4902,-1.4558]; // Belém, Pará: ponto inicial ilustrativo até obter GPS
 function toast(msg){const el=$('toast');el.textContent=msg;el.classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.classList.remove('show'),3500)}
 function setInfo(title,text){$('infoTitle').textContent=title;$('infoText').textContent=text}
@@ -217,6 +217,28 @@ $('openMaps').addEventListener('click',()=>{
  window.location.href=url;
 });
 $('resetBtn').addEventListener('click',()=>{map.flyTo({center:state.destination||state.position||start,zoom:state.destination?14.5:(state.position?15:12),pitch:state.tilted?38:0,bearing:state.tilted?-8:0,duration:1000});});
+function clearTrafficLayer(){
+ if(state.trafficTimer){clearInterval(state.trafficTimer);state.trafficTimer=null}
+ if(map.getLayer('live-traffic-lines'))map.removeLayer('live-traffic-lines');
+ if(map.getSource('live-traffic'))map.removeSource('live-traffic');
+ state.traffic=false;$('liveTrafficBtn').classList.remove('active');
+}
+async function toggleLiveTraffic(){
+ if(state.traffic){clearTrafficLayer();setInfo('Trânsito ao vivo desligado','A camada de trânsito foi removida.');toast('Trânsito ao vivo desligado.');return}
+ if(!map.isStyleLoaded()){toast('Aguarde o mapa carregar e tente novamente.');return}
+ $('liveTrafficBtn').textContent='…';
+ try{
+  // O serviço público OSRM não fornece condições de congestionamento em tempo real.
+  // Não desenhar tráfego fictício: informar claramente que é necessária uma fonte de trânsito real.
+  $('liveTrafficBtn').textContent='🚦';
+  setInfo('Trânsito em tempo real','Ainda não há um provedor de trânsito ao vivo conectado. Para mostrar congestionamentos reais e movimento nas vias, é necessário configurar uma API de tráfego com chave válida.');
+  toast('Trânsito ao vivo precisa de um provedor de dados real.');
+  window.open('https://www.tomtom.com/products/traffic-api/','_blank','noopener');
+ }catch(e){
+  $('liveTrafficBtn').textContent='🚦';toast('Não foi possível abrir as informações de trânsito.');
+ }
+}
+$('liveTrafficBtn').addEventListener('click',toggleLiveTraffic);
 $('trafficBtn').addEventListener('click',()=>{
  if(!map.isStyleLoaded()){toast('Aguarde o mapa carregar e tente novamente.');return}
  state.streetMode=!state.streetMode;
